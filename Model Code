@@ -1,0 +1,61 @@
+library(FME)
+library(deSolve)
+
+parms<-c( 
+  probC=0.008, #Probability of being colonised by ARB at admission
+  decolonisation=0.00143, #decolonisation rate
+  a1=0.968,#probability of receiving antibiotic treatment as a symptomatic patient
+  a2=0.0968,#probability of receiving antibiotic treatment as an asymptomatic patient
+  prob_acquire_resistance=0.06, #probability of acquiring resistance from treatment
+  transmission=0.215, #rate of transmission for ARB
+  progression=0.04286, #rate of progression from colonisation to infection
+  probI=0.001, #probability of being infected with ARB at admission
+  dischargesN=0.161, #discharge rate of non-COVID-19 patients
+  IdischargesN=0.067, #discharge rate of ARB infected non-COVID-19 patients 
+  deathN=0.0000338, #mortality rate of non-COVID-19 patients
+  IdeathN=0.007267, #mortality rate of ARB infected non-COVID-19 patients
+  prob_success=0.365, #probability of successful treatment
+  probCov=0.1, #probability rate of having COVID-19 at admission
+  deathC=0.009,#mortality rate of COVID not infected
+  IdeathC=0.01481, #mortality rate of ARB infected COVID-19 patients
+  IdischargesC=0.045, #discharge rate for ARB infected COVID-19 patients
+  dischargesC=0.05, #discharge rate for COVID-19 patients
+  recovery=0.3, #COVID-19 recovery rate
+  infection=0.1 #COVID-19 infection rate
+) 
+big_model<-function(parms){
+  xstart<-c(unN=429,cN=8,iN=0,unC=48,cC=1,iC=0)
+  times<-seq(0,365,1)
+  model<-function(t,xstart,parms){ 
+    unN<-xstart[1] 
+    cN<-xstart[2]
+    iN<-xstart[3]
+    unC<-xstart[4]
+    cC<-xstart[5]
+    iC<-xstart[6]
+    with(as.list(parms),{ 
+      dunN<-((dischargesN*(unN+cN)+IdischargesN*iN+dischargesC*(unC+cC)+IdischargesC*iC+deathN*(unN+cN)+IdeathN*iN+deathC*(unC+cC)+IdeathC*iC)*(1-probC-probI)*(1-probCov))+(decolonisation*cN)+(recovery*unC)-(deathN*unN)-(dischargesN*unN)-(a2*prob_acquire_resistance*unN)-(transmission*a2*unN*(cN+iN+cC+iC)/(unN+cN+iN+unC+cC+iC))-(infection*unN*(unC+cC+iC)/(unC+cC+iC+unN+cN+iN))
+      dcN<-((dischargesN*(unN+cN)+IdischargesN*iN+dischargesC*(unC+cC)+IdischargesC*iC+deathN*(unN+cN)+IdeathN*iN+deathC*(unC+cC)+IdeathC*iC)*probC*(1-probCov))-(decolonisation*cN)+(recovery*cC)-(deathN*cN)-(dischargesN*cN)+(a2*prob_acquire_resistance*unN)+(a1*prob_success*iN)+(transmission*a2*unN*(cN+iN+cC+iC)/(unN+cN+iN+unC+cC+iC))-(infection*cN*(unC+cC+iC)/(unC+cC+iC+unN+cN+iN))-(progression*cN)
+      diN<-((dischargesN*(unN+cN)+IdischargesN*iN+dischargesC*(unC+cC)+IdischargesC*iC+deathN*(unN+cN)+IdeathN*iN+deathC*(unC+cC)+IdeathC*iC)*probI*(1-probCov))+(progression*cN)+(recovery*iC)-(IdeathN*iN)-(IdischargesN*iN)-(a1*prob_success*iN)-(infection*iN*(unC+cC+iC)/(unC+cC+iC+unN+cN+iN))
+      dunC<-((dischargesN*(unN+cN)+IdischargesN*iN+dischargesC*(unC+cC)+IdischargesC*iC+deathN*(unN+cN)+IdeathN*iN+deathC*(unC+cC)+IdeathC*iC)*(1-probC-probI)*probCov)+(decolonisation*cC)-(recovery*unC)-(deathC*unC)-(dischargesC*unC)-(a1*prob_acquire_resistance*unC)-(transmission*a2*unC*(cN+iN+cC+iC)/(unN+cN+iN+unC+cC+iC))+(infection*unN*(unC+cC+iC)/(unC+cC+iC+unN+cN+iN))
+      dcC<-((dischargesN*(unN+cN)+IdischargesN*iN+dischargesC*(unC+cC)+IdischargesC*iC+deathN*(unN+cN)+IdeathN*iN+deathC*(unC+cC)+IdeathC*iC)*probC*probCov)-(decolonisation*cC)-(recovery*cC)-(deathC*cC)-(dischargesC*cC)+(a1*prob_acquire_resistance*unC)+(a1*prob_success*iC)+(transmission*a2*unC*(cN+iN+cC+iC)/(unN+cN+iN+unC+cC+iC))+(infection*cN*(unC+cC+iC)/(unC+cC+iC+unN+cN+iN))-(progression*cC)
+      diC<-((dischargesN*(unN+cN)+IdischargesN*iN+dischargesC*(unC+cC)+IdischargesC*iC+deathN*(unN+cN)+IdeathN*iN+deathC*(unC+cC)+IdeathC*iC)*probI*probCov)+(progression*cC)-(recovery*iC)-(IdeathC*iC)-(IdischargesC*iC)-(a1*prob_success*iC)+(infection*iN*(unC+cC+iC)/(unC+cC+iC+unN+cN+iN))
+      list(c(dunN,dcN,diN,dunC,dcC,diC)) 
+    }) 
+  }
+  return(ode(xstart,times,model,parms))
+}
+out_big<-(big_model(parms))
+plot(out_big, xlab = "time,day", ylab = "No. patients")
+out_big <- as.data.frame(out_big)
+
+
+parRanges <- data.frame(min = c(0.00035,0.0001,0.847,0.0847,0.02,0.01,0.04,0.001,0.161,0.067,0.0000338,0.007267,0.04286,0.01,0.009,0.01481,0.045,0.05,0.3,0.1),max=c(0.05,0.07,0.999,0.0999,0.1,0.42,0.25,0.001,0.161,0.067,0.0000338,0.007267,0.69,0.1,0.009,0.01481,0.045,0.05,0.3,0.1))
+rownames(parRanges) <- c("probC","decolonisation","a1","a2","prob_acquire_resistance","transmission","progression","probI","dischargesN","IdischargesN","deathN","IdeathN","prob_success","probCov","deathC","IdeathC","IdischargesC","dischargesC","recovery","infection")
+parRanges
+
+sR <- sensRange(func=big_model,parms=parms,dist="latin",
+                sensvar=c("cN","iN","cC","iC"),parRange=parRanges[,],num=1000)
+
+head(summary(sR))
+summ.sR <- summary(sR)
